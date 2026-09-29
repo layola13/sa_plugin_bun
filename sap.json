@@ -1,0 +1,70 @@
+{
+  "schema": "sa.plugin/1",
+  "name": "bun",
+  "version": "0.1.0",
+  "source": {
+    "type": "local",
+    "path": "."
+  },
+  "abi": {
+    "plugin": 1,
+    "saasm": ">=0.4.0",
+    "symbols": "bun.sai"
+  },
+  "artifacts": {
+    "linux-x86_64": {
+      "path": "zig-out/lib/libbun.so"
+    }
+  },
+  "interfaces": {
+    "sai": { "path": "bun.sai" },
+    "sal": { "path": "bun.sal" }
+  },
+  "skills": ["bun.sys", "bun.env", "bun.fs", "bun.hash", "bun.process"],
+  "permissions": {
+    "fs": [
+      { "op": "read", "path": "$PROJECT/**" },
+      { "op": "write", "path": "$PROJECT/**" },
+      { "op": "create", "path": "$PROJECT/**" },
+      { "op": "delete", "path": "$PROJECT/**" },
+      { "op": "read", "path": "/tmp/**" },
+      { "op": "write", "path": "/tmp/**" },
+      { "op": "create", "path": "/tmp/**" },
+      { "op": "delete", "path": "/tmp/**" }
+    ],
+    "net": [
+      { "url": "https://*", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] },
+      { "url": "http://localhost", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] },
+      { "url": "http://127.0.0.1", "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] }
+    ],
+    "env": ["HOME", "PATH", "TMPDIR", "SA_*"],
+    "process": {
+      "spawn": true,
+      "exec": [
+        { "path": "/usr/bin/env", "args": ["*"] }
+      ]
+    }
+  },
+  "dependencies": {
+    "http-client": {
+      "version": ">=0.1.0",
+      "abi": 1,
+      "path": "../sa_plugin_http_client",
+      "symbols": [
+        "sa_http_client_new",
+        "sa_http_client_req_send",
+        "sa_http_client_resp_body_slice"
+      ]
+    },
+    "http-server": {
+      "version": ">=0.1.0",
+      "abi": 1,
+      "path": "../sa_plugin_http_server",
+      "symbols": [
+        "sa_http_server_new",
+        "sa_http_server_resp_set_content_type",
+        "sa_http_server_resp_stream_write"
+      ]
+    }
+  }
+}

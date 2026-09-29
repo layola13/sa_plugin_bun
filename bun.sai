@@ -1,0 +1,102 @@
+// Bun compatibility plugin public SA interface.
+// Status: native replacement surface implemented by libbun.so; this does not call Bun.
+//
+// Source of truth for the upstream surface:
+//   /tmp/opencode/bun/packages/bun-types/bun.d.ts        (Bun namespace, shallow clone @ 9f70da07, v1.4.2)
+//   /tmp/opencode/bun/packages/bun-types/{serve,sqlite,s3,sql,redis,ffi,shell,test}.d.ts
+//
+// Status convention (same as node.sai / deno.sai):
+//   0 = ok, 1 = not-found/null, 2 = error, 3 = unsupported-stub (with *_support_json explaining why).
+
+@extern sa_bun_plugin_free_buffer(ptr: ptr, len: u64) -> u32
+
+// --- runtime info: Bun.version / revision / main / argv / cwd / which ---
+@extern sa_bun_plugin_version(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_revision(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_main(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_argv_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_cwd(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_which(&cmd: ptr, cmd_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- path helpers: Bun.fileURLToPath / pathToFileURL ---
+@extern sa_bun_plugin_file_url_to_path(&url: ptr, url_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_path_to_file_url(&path: ptr, path_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- time: Bun.nanoseconds / Bun.sleepSync ---
+@extern sa_bun_plugin_nanoseconds(&out_ns: ptr) -> u32
+@extern sa_bun_plugin_sleep_sync(ms: u64) -> u32
+
+// --- env: Bun.env get / set / delete ---
+@extern sa_bun_plugin_env_get(&key: ptr, key_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_env_set(&key: ptr, key_len: u64, &value: ptr, value_len: u64) -> u32
+@extern sa_bun_plugin_env_delete(&key: ptr, key_len: u64) -> u32
+
+// --- file: Bun.file().text/bytes + Bun.write ---
+@extern sa_bun_plugin_file_read_text(&path: ptr, path_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_file_read_base64(&path: ptr, path_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_write_text_file(&path: ptr, path_len: u64, &data: ptr, data_len: u64) -> u32
+@extern sa_bun_plugin_write_file_base64(&path: ptr, path_len: u64, &base64: ptr, base64_len: u64) -> u32
+@extern sa_bun_plugin_file_size(&path: ptr, path_len: u64, &out_size: ptr) -> u32
+@extern sa_bun_plugin_file_exists(&path: ptr, path_len: u64, &out_bool: ptr) -> u32
+@extern sa_bun_plugin_mkdir(&path: ptr, path_len: u64, recursive: u8) -> u32
+@extern sa_bun_plugin_remove(&path: ptr, path_len: u64, recursive: u8) -> u32
+
+// --- hash & random: Bun.hash / Bun.hash.crc32 / SHA helpers / randomBytes / randomUUIDv7 ---
+#def BUN_HASH_FNV1A64 = 0
+#def BUN_HASH_CRC32 = 1
+#def BUN_HASH_WYHASH64 = 2
+#def BUN_HASH_XXHASH64 = 3
+@extern sa_bun_plugin_hash_u64(&data: ptr, data_len: u64, algo: u32, &out_hash: ptr) -> u32
+@extern sa_bun_plugin_hash_crc32(&data: ptr, data_len: u64, &out_crc: ptr) -> u32
+// Seeded one-shot hashes (seed default 0 upstream). wyhash = final4 variant used
+// by Bun.hash(); xxhash64/32 bit-identical to the xxHash reference.
+@extern sa_bun_plugin_hash_wyhash64(&data: ptr, data_len: u64, seed: u64, &out_hash: ptr) -> u32
+@extern sa_bun_plugin_hash_xxhash64(&data: ptr, data_len: u64, seed: u64, &out_hash: ptr) -> u32
+@extern sa_bun_plugin_hash_xxhash32(&data: ptr, data_len: u64, seed: u32, &out_hash: ptr) -> u32
+@extern sa_bun_plugin_hash_adler32(&data: ptr, data_len: u64, &out_hash: ptr) -> u32
+@extern sa_bun_plugin_sha256_hex(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_sha512_hex(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_random_bytes(size: u64, &out_ptr: ptr) -> u32
+@extern sa_bun_plugin_random_uuid_v7(&out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- compression: Bun.gzipSync / gunzipSync / deflateSync / inflateSync ---
+@extern sa_bun_plugin_gzip_compress(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_gzip_decompress(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_deflate_compress(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_deflate_decompress(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- text: Bun.escapeHTML / Bun.stringWidth / btoa / atob ---
+@extern sa_bun_plugin_escape_html(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_string_width(&data: ptr, data_len: u64, &out_width: ptr) -> u32
+@extern sa_bun_plugin_btoa(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_atob(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- process: Bun.spawnSync (sync subset) / Bun.resolveSync / shell escape ---
+@extern sa_bun_plugin_spawn_sync(argv_json: ptr, argv_len: u64, &cwd: ptr, cwd_len: u64, &out_code: ptr, &out_stdout_ptr: ptr, &out_stdout_len: ptr, &out_stderr_ptr: ptr, &out_stderr_len: ptr) -> u32
+@extern sa_bun_plugin_resolve_sync(&spec: ptr, spec_len: u64, &parent: ptr, parent_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_shell_escape(&data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_shell_exec(&cmd: ptr, cmd_len: u64, &cwd: ptr, cwd_len: u64, &out_code: ptr, &out_stdout_ptr: ptr, &out_stdout_len: ptr, &out_stderr_ptr: ptr, &out_stderr_len: ptr) -> u32
+@extern sa_bun_plugin_write_stdout(&data: ptr, data_len: u64) -> u32
+@extern sa_bun_plugin_write_stderr(&data: ptr, data_len: u64) -> u32
+
+// --- incremental hasher: Bun.CryptoHasher subset (0=sha256,1=sha512,2=sha1,3=md5) ---
+@extern sa_bun_plugin_hasher_new(algo: u32, &out_handle: ptr) -> u32
+@extern sa_bun_plugin_hasher_update(handle: ptr, &data: ptr, data_len: u64) -> u32
+@extern sa_bun_plugin_hasher_digest_hex(handle: ptr, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_hasher_free(handle: ptr) -> u32
+
+// --- HMAC-SHA256 + AWS SigV4 (Bun.S3 signing-key path) ---
+@extern sa_bun_plugin_hmac_sha256_hex(&key: ptr, key_len: u64, &data: ptr, data_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_s3_sigv4_signature(&secret: ptr, secret_len: u64, &date: ptr, date_len: u64, &region: ptr, region_len: u64, &service: ptr, service_len: u64, &sts: ptr, sts_len: u64, &out_ptr: ptr, &out_len: ptr) -> u32
+
+// --- semver: Bun.semver subset (-1/0/1, 2 = invalid via status) ---
+@extern sa_bun_plugin_semver_cmp(&a: ptr, a_len: u64, &b: ptr, b_len: u64, &out_order: ptr) -> u32
+
+// --- capability snapshots for runtime-heavy surfaces (honest stubs, status 3 + JSON) ---
+@extern sa_bun_plugin_serve_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_sqlite_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_s3_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_redis_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_ffi_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_build_support_json(&out_ptr: ptr, &out_len: ptr) -> u32
+@extern sa_bun_plugin_test_support_json(&out_ptr: ptr, &out_len: ptr) -> u32

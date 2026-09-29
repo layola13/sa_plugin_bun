@@ -1,0 +1,594 @@
+// Bun compatibility plugin public SA macro facade.
+// Mirrors the layering of sa_plugin_deno/deno.sal:
+//   1. plugin's own C-ABI (sa_bun_plugin_*) for the sync Bun.* subset,
+//   2. sa_http_server_* for the Bun.serve accept/respond path,
+//   3. sa_http_client_* is imported alongside for fetch-style outbound calls.
+@import "bun.sai"
+@import "sa_http_client.sai"
+@import "sa_http_server.sai"
+
+[MACRO] BUN_FREE_BUFFER %ptr, %len, %out_status
+    %out_status = call @sa_bun_plugin_free_buffer(%ptr, %len)
+[END_MACRO]
+
+[MACRO] BUN_VERSION %out_ptr, %out_len, %out_status
+    __bun_v_ptr_slot = stack_alloc 8
+    __bun_v_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_version(&__bun_v_ptr_slot, &__bun_v_len_slot)
+    %out_ptr = load __bun_v_ptr_slot+0 as ptr
+    %out_len = load __bun_v_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_REVISION %out_ptr, %out_len, %out_status
+    __bun_rev_ptr_slot = stack_alloc 8
+    __bun_rev_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_revision(&__bun_rev_ptr_slot, &__bun_rev_len_slot)
+    %out_ptr = load __bun_rev_ptr_slot+0 as ptr
+    %out_len = load __bun_rev_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_MAIN %out_ptr, %out_len, %out_status
+    __bun_main_ptr_slot = stack_alloc 8
+    __bun_main_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_main(&__bun_main_ptr_slot, &__bun_main_len_slot)
+    %out_ptr = load __bun_main_ptr_slot+0 as ptr
+    %out_len = load __bun_main_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_ARGV_JSON %out_ptr, %out_len, %out_status
+    __bun_argv_ptr_slot = stack_alloc 8
+    __bun_argv_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_argv_json(&__bun_argv_ptr_slot, &__bun_argv_len_slot)
+    %out_ptr = load __bun_argv_ptr_slot+0 as ptr
+    %out_len = load __bun_argv_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_CWD %out_ptr, %out_len, %out_status
+    __bun_cwd_ptr_slot = stack_alloc 8
+    __bun_cwd_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_cwd(&__bun_cwd_ptr_slot, &__bun_cwd_len_slot)
+    %out_ptr = load __bun_cwd_ptr_slot+0 as ptr
+    %out_len = load __bun_cwd_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_WHICH %out_ptr, %out_len, %out_status, %cmd, %cmd_len
+    __bun_which_ptr_slot = stack_alloc 8
+    __bun_which_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_which(&%cmd, %cmd_len, &__bun_which_ptr_slot, &__bun_which_len_slot)
+    %out_ptr = load __bun_which_ptr_slot+0 as ptr
+    %out_len = load __bun_which_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_FILE_URL_TO_PATH %out_ptr, %out_len, %out_status, %url, %url_len
+    __bun_futp_ptr_slot = stack_alloc 8
+    __bun_futp_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_file_url_to_path(&%url, %url_len, &__bun_futp_ptr_slot, &__bun_futp_len_slot)
+    %out_ptr = load __bun_futp_ptr_slot+0 as ptr
+    %out_len = load __bun_futp_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_PATH_TO_FILE_URL %out_ptr, %out_len, %out_status, %path, %path_len
+    __bun_ptfu_ptr_slot = stack_alloc 8
+    __bun_ptfu_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_path_to_file_url(&%path, %path_len, &__bun_ptfu_ptr_slot, &__bun_ptfu_len_slot)
+    %out_ptr = load __bun_ptfu_ptr_slot+0 as ptr
+    %out_len = load __bun_ptfu_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_NANOSECONDS %out_ns, %out_status
+    __bun_ns_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_nanoseconds(&__bun_ns_slot)
+    %out_ns = load __bun_ns_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SLEEP_SYNC %out_status, %ms
+    %out_status = call @sa_bun_plugin_sleep_sync(%ms)
+[END_MACRO]
+
+[MACRO] BUN_ENV_GET %out_ptr, %out_len, %out_status, %key, %key_len
+    __bun_eg_ptr_slot = stack_alloc 8
+    __bun_eg_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_env_get(&%key, %key_len, &__bun_eg_ptr_slot, &__bun_eg_len_slot)
+    %out_ptr = load __bun_eg_ptr_slot+0 as ptr
+    %out_len = load __bun_eg_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_ENV_SET %out_status, %key, %key_len, %value, %value_len
+    %out_status = call @sa_bun_plugin_env_set(&%key, %key_len, &%value, %value_len)
+[END_MACRO]
+
+[MACRO] BUN_ENV_DELETE %out_status, %key, %key_len
+    %out_status = call @sa_bun_plugin_env_delete(&%key, %key_len)
+[END_MACRO]
+
+[MACRO] BUN_FILE_READ_TEXT %out_ptr, %out_len, %out_status, %path, %path_len
+    __bun_frt_ptr_slot = stack_alloc 8
+    __bun_frt_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_file_read_text(&%path, %path_len, &__bun_frt_ptr_slot, &__bun_frt_len_slot)
+    %out_ptr = load __bun_frt_ptr_slot+0 as ptr
+    %out_len = load __bun_frt_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_FILE_READ_BASE64 %out_ptr, %out_len, %out_status, %path, %path_len
+    __bun_frb_ptr_slot = stack_alloc 8
+    __bun_frb_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_file_read_base64(&%path, %path_len, &__bun_frb_ptr_slot, &__bun_frb_len_slot)
+    %out_ptr = load __bun_frb_ptr_slot+0 as ptr
+    %out_len = load __bun_frb_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_WRITE_TEXT_FILE %out_status, %path, %path_len, %data, %data_len
+    %out_status = call @sa_bun_plugin_write_text_file(&%path, %path_len, &%data, %data_len)
+[END_MACRO]
+
+[MACRO] BUN_WRITE_FILE_BASE64 %out_status, %path, %path_len, %base64, %base64_len
+    %out_status = call @sa_bun_plugin_write_file_base64(&%path, %path_len, &%base64, %base64_len)
+[END_MACRO]
+
+[MACRO] BUN_FILE_SIZE %out_size, %out_status, %path, %path_len
+    __bun_fsize_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_file_size(&%path, %path_len, &__bun_fsize_slot)
+    %out_size = load __bun_fsize_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_FILE_EXISTS %out_bool, %out_status, %path, %path_len
+    __bun_fexists_slot = stack_alloc 1
+    %out_status = call @sa_bun_plugin_file_exists(&%path, %path_len, &__bun_fexists_slot)
+    %out_bool = load __bun_fexists_slot+0 as u8
+[END_MACRO]
+
+[MACRO] BUN_MKDIR %out_status, %path, %path_len, %recursive
+    %out_status = call @sa_bun_plugin_mkdir(&%path, %path_len, %recursive)
+[END_MACRO]
+
+[MACRO] BUN_REMOVE %out_status, %path, %path_len, %recursive
+    %out_status = call @sa_bun_plugin_remove(&%path, %path_len, %recursive)
+[END_MACRO]
+
+[MACRO] BUN_HASH_U64 %out_hash, %out_status, %data, %data_len, %algo
+    __bun_hash_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hash_u64(&%data, %data_len, %algo, &__bun_hash_slot)
+    %out_hash = load __bun_hash_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_HASH_CRC32 %out_crc, %out_status, %data, %data_len
+    __bun_crc_slot = stack_alloc 4
+    %out_status = call @sa_bun_plugin_hash_crc32(&%data, %data_len, &__bun_crc_slot)
+    %out_crc = load __bun_crc_slot+0 as u32
+[END_MACRO]
+
+[MACRO] BUN_SHA256_HEX %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_sha256_ptr_slot = stack_alloc 8
+    __bun_sha256_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_sha256_hex(&%data, %data_len, &__bun_sha256_ptr_slot, &__bun_sha256_len_slot)
+    %out_ptr = load __bun_sha256_ptr_slot+0 as ptr
+    %out_len = load __bun_sha256_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SHA512_HEX %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_sha512_ptr_slot = stack_alloc 8
+    __bun_sha512_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_sha512_hex(&%data, %data_len, &__bun_sha512_ptr_slot, &__bun_sha512_len_slot)
+    %out_ptr = load __bun_sha512_ptr_slot+0 as ptr
+    %out_len = load __bun_sha512_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_RANDOM_BYTES %out_ptr, %out_status, %size
+    __bun_rb_ptr_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_random_bytes(%size, &__bun_rb_ptr_slot)
+    %out_ptr = load __bun_rb_ptr_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_RANDOM_UUID_V7 %out_ptr, %out_len, %out_status
+    __bun_uuid_ptr_slot = stack_alloc 8
+    __bun_uuid_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_random_uuid_v7(&__bun_uuid_ptr_slot, &__bun_uuid_len_slot)
+    %out_ptr = load __bun_uuid_ptr_slot+0 as ptr
+    %out_len = load __bun_uuid_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_GZIP_COMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_gzc_ptr_slot = stack_alloc 8
+    __bun_gzc_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_gzip_compress(&%data, %data_len, &__bun_gzc_ptr_slot, &__bun_gzc_len_slot)
+    %out_ptr = load __bun_gzc_ptr_slot+0 as ptr
+    %out_len = load __bun_gzc_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_GZIP_DECOMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_gzd_ptr_slot = stack_alloc 8
+    __bun_gzd_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_gzip_decompress(&%data, %data_len, &__bun_gzd_ptr_slot, &__bun_gzd_len_slot)
+    %out_ptr = load __bun_gzd_ptr_slot+0 as ptr
+    %out_len = load __bun_gzd_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_DEFLATE_COMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_dfc_ptr_slot = stack_alloc 8
+    __bun_dfc_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_deflate_compress(&%data, %data_len, &__bun_dfc_ptr_slot, &__bun_dfc_len_slot)
+    %out_ptr = load __bun_dfc_ptr_slot+0 as ptr
+    %out_len = load __bun_dfc_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_DEFLATE_DECOMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_dfd_ptr_slot = stack_alloc 8
+    __bun_dfd_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_deflate_decompress(&%data, %data_len, &__bun_dfd_ptr_slot, &__bun_dfd_len_slot)
+    %out_ptr = load __bun_dfd_ptr_slot+0 as ptr
+    %out_len = load __bun_dfd_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_ESCAPE_HTML %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_eh_ptr_slot = stack_alloc 8
+    __bun_eh_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_escape_html(&%data, %data_len, &__bun_eh_ptr_slot, &__bun_eh_len_slot)
+    %out_ptr = load __bun_eh_ptr_slot+0 as ptr
+    %out_len = load __bun_eh_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_STRING_WIDTH %out_width, %out_status, %data, %data_len
+    __bun_sw_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_string_width(&%data, %data_len, &__bun_sw_slot)
+    %out_width = load __bun_sw_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_BTOA %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_btoa_ptr_slot = stack_alloc 8
+    __bun_btoa_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_btoa(&%data, %data_len, &__bun_btoa_ptr_slot, &__bun_btoa_len_slot)
+    %out_ptr = load __bun_btoa_ptr_slot+0 as ptr
+    %out_len = load __bun_btoa_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_ATOB %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_atob_ptr_slot = stack_alloc 8
+    __bun_atob_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_atob(&%data, %data_len, &__bun_atob_ptr_slot, &__bun_atob_len_slot)
+    %out_ptr = load __bun_atob_ptr_slot+0 as ptr
+    %out_len = load __bun_atob_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SPAWN_SYNC %out_code, %out_stdout_ptr, %out_stdout_len, %out_stderr_ptr, %out_stderr_len, %out_status, %argv_json, %argv_json_len, %cwd, %cwd_len
+    __bun_spawn_code_slot = stack_alloc 4
+    __bun_spawn_stdout_ptr_slot = stack_alloc 8
+    __bun_spawn_stdout_len_slot = stack_alloc 8
+    __bun_spawn_stderr_ptr_slot = stack_alloc 8
+    __bun_spawn_stderr_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_spawn_sync(&%argv_json, %argv_json_len, &%cwd, %cwd_len, &__bun_spawn_code_slot, &__bun_spawn_stdout_ptr_slot, &__bun_spawn_stdout_len_slot, &__bun_spawn_stderr_ptr_slot, &__bun_spawn_stderr_len_slot)
+    %out_code = load __bun_spawn_code_slot+0 as u32
+    %out_stdout_ptr = load __bun_spawn_stdout_ptr_slot+0 as ptr
+    %out_stdout_len = load __bun_spawn_stdout_len_slot+0 as u64
+    %out_stderr_ptr = load __bun_spawn_stderr_ptr_slot+0 as ptr
+    %out_stderr_len = load __bun_spawn_stderr_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_RESOLVE_SYNC %out_ptr, %out_len, %out_status, %spec, %spec_len, %parent, %parent_len
+    __bun_resolve_ptr_slot = stack_alloc 8
+    __bun_resolve_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_resolve_sync(&%spec, %spec_len, &%parent, %parent_len, &__bun_resolve_ptr_slot, &__bun_resolve_len_slot)
+    %out_ptr = load __bun_resolve_ptr_slot+0 as ptr
+    %out_len = load __bun_resolve_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SHELL_ESCAPE %out_ptr, %out_len, %out_status, %data, %data_len
+    __bun_shesc_ptr_slot = stack_alloc 8
+    __bun_shesc_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_shell_escape(&%data, %data_len, &__bun_shesc_ptr_slot, &__bun_shesc_len_slot)
+    %out_ptr = load __bun_shesc_ptr_slot+0 as ptr
+    %out_len = load __bun_shesc_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_serve_sup_ptr_slot = stack_alloc 8
+    __bun_serve_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_serve_support_json(&__bun_serve_sup_ptr_slot, &__bun_serve_sup_len_slot)
+    %out_ptr = load __bun_serve_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_serve_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SQLITE_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_sqlite_sup_ptr_slot = stack_alloc 8
+    __bun_sqlite_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_sqlite_support_json(&__bun_sqlite_sup_ptr_slot, &__bun_sqlite_sup_len_slot)
+    %out_ptr = load __bun_sqlite_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_sqlite_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_S3_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_s3_sup_ptr_slot = stack_alloc 8
+    __bun_s3_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_s3_support_json(&__bun_s3_sup_ptr_slot, &__bun_s3_sup_len_slot)
+    %out_ptr = load __bun_s3_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_s3_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_REDIS_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_redis_sup_ptr_slot = stack_alloc 8
+    __bun_redis_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_redis_support_json(&__bun_redis_sup_ptr_slot, &__bun_redis_sup_len_slot)
+    %out_ptr = load __bun_redis_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_redis_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_FFI_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_ffi_sup_ptr_slot = stack_alloc 8
+    __bun_ffi_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_ffi_support_json(&__bun_ffi_sup_ptr_slot, &__bun_ffi_sup_len_slot)
+    %out_ptr = load __bun_ffi_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_ffi_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_BUILD_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_build_sup_ptr_slot = stack_alloc 8
+    __bun_build_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_build_support_json(&__bun_build_sup_ptr_slot, &__bun_build_sup_len_slot)
+    %out_ptr = load __bun_build_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_build_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_TEST_SUPPORT_JSON %out_ptr, %out_len, %out_status
+    __bun_test_sup_ptr_slot = stack_alloc 8
+    __bun_test_sup_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_test_support_json(&__bun_test_sup_ptr_slot, &__bun_test_sup_len_slot)
+    %out_ptr = load __bun_test_sup_ptr_slot+0 as ptr
+    %out_len = load __bun_test_sup_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_FILE %out_ptr, %out_len, %out_status, %path, %path_len
+    EXPAND BUN_FILE_READ_TEXT %out_ptr, %out_len, %out_status, %path, %path_len
+[END_MACRO]
+
+[MACRO] BUN_FILE_BYTES_BASE64 %out_ptr, %out_len, %out_status, %path, %path_len
+    EXPAND BUN_FILE_READ_BASE64 %out_ptr, %out_len, %out_status, %path, %path_len
+[END_MACRO]
+
+[MACRO] BUN_WRITE %out_status, %path, %path_len, %data, %data_len
+    EXPAND BUN_WRITE_TEXT_FILE %out_status, %path, %path_len, %data, %data_len
+[END_MACRO]
+
+[MACRO] BUN_SLEEP %out_status, %ms
+    EXPAND BUN_SLEEP_SYNC %out_status, %ms
+[END_MACRO]
+
+[MACRO] BUN_GZIP %out_ptr, %out_len, %out_status, %data, %data_len
+    EXPAND BUN_GZIP_COMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+[END_MACRO]
+
+[MACRO] BUN_GUNZIP %out_ptr, %out_len, %out_status, %data, %data_len
+    EXPAND BUN_GZIP_DECOMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+[END_MACRO]
+
+[MACRO] BUN_DEFLATE %out_ptr, %out_len, %out_status, %data, %data_len
+    EXPAND BUN_DEFLATE_COMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+[END_MACRO]
+
+[MACRO] BUN_INFLATE %out_ptr, %out_len, %out_status, %data, %data_len
+    EXPAND BUN_DEFLATE_DECOMPRESS %out_ptr, %out_len, %out_status, %data, %data_len
+[END_MACRO]
+
+[MACRO] BUN_HASH %out_hash, %out_status, %data, %data_len, %algo
+    EXPAND BUN_HASH_U64 %out_hash, %out_status, %data, %data_len, %algo
+[END_MACRO]
+
+[MACRO] BUN_RANDOM_UUID %out_ptr, %out_len, %out_status
+    EXPAND BUN_RANDOM_UUID_V7 %out_ptr, %out_len, %out_status
+[END_MACRO]
+
+[MACRO] BUN_SPAWN %out_code, %out_stdout_ptr, %out_stdout_len, %out_stderr_ptr, %out_stderr_len, %out_status, %argv_json, %argv_json_len, %cwd, %cwd_len
+    EXPAND BUN_SPAWN_SYNC %out_code, %out_stdout_ptr, %out_stdout_len, %out_stderr_ptr, %out_stderr_len, %out_status, %argv_json, %argv_json_len, %cwd, %cwd_len
+[END_MACRO]
+
+[MACRO] BUN_SERVE_NEW %out_status, %out_server
+    __bun_serve_server_slot = stack_alloc 8
+    %out_status = call @sa_http_server_new(&__bun_serve_server_slot)
+    %out_server = load __bun_serve_server_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_SERVE_START %out_status, %server, %host, %host_len, %port
+    %out_status = call @sa_http_server_start(%server, &%host, %host_len, %port)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_ACCEPT %out_status, %out_request, %server
+    __bun_serve_request_slot = stack_alloc 8
+    %out_status = call @sa_http_server_accept(%server, &__bun_serve_request_slot)
+    %out_request = load __bun_serve_request_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_SERVE_REQUEST_METHOD %out_status, %out_ptr, %out_len, %request
+    __bun_serve_method_ptr_slot = stack_alloc 8
+    __bun_serve_method_len_slot = stack_alloc 8
+    %out_status = call @sa_http_server_req_get_method(%request, &__bun_serve_method_ptr_slot, &__bun_serve_method_len_slot)
+    %out_ptr = load __bun_serve_method_ptr_slot+0 as ptr
+    %out_len = load __bun_serve_method_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_REQUEST_PATH %out_status, %out_ptr, %out_len, %request
+    __bun_serve_path_ptr_slot = stack_alloc 8
+    __bun_serve_path_len_slot = stack_alloc 8
+    %out_status = call @sa_http_server_req_get_path(%request, &__bun_serve_path_ptr_slot, &__bun_serve_path_len_slot)
+    %out_ptr = load __bun_serve_path_ptr_slot+0 as ptr
+    %out_len = load __bun_serve_path_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_REQUEST_HEADER %out_status, %out_ptr, %out_len, %request, %key, %key_len
+    __bun_serve_header_ptr_slot = stack_alloc 8
+    __bun_serve_header_len_slot = stack_alloc 8
+    %out_status = call @sa_http_server_req_get_header(%request, &%key, %key_len, &__bun_serve_header_ptr_slot, &__bun_serve_header_len_slot)
+    %out_ptr = load __bun_serve_header_ptr_slot+0 as ptr
+    %out_len = load __bun_serve_header_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_REQUEST_BODY %out_status, %out_ptr, %out_len, %request
+    __bun_serve_body_ptr_slot = stack_alloc 8
+    __bun_serve_body_len_slot = stack_alloc 8
+    %out_status = call @sa_http_server_req_get_body(%request, &__bun_serve_body_ptr_slot, &__bun_serve_body_len_slot)
+    %out_ptr = load __bun_serve_body_ptr_slot+0 as ptr
+    %out_len = load __bun_serve_body_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_RESPONSE_NEW %out_status, %out_response, %request, %status_code
+    __bun_serve_response_slot = stack_alloc 8
+    %out_status = call @sa_http_server_resp_new(%request, %status_code, &__bun_serve_response_slot)
+    %out_response = load __bun_serve_response_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_SERVE_RESPONSE_SET_CONTENT_TYPE %out_status, %response, %content_type, %content_type_len
+    %out_status = call @sa_http_server_resp_set_content_type(%response, &%content_type, %content_type_len)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_RESPONSE_SEND %out_status, %response, %body, %body_len
+    %out_status = call @sa_http_server_resp_send(%response, &%body, %body_len)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_RESPONSE_FREE %out_status, %response
+    %out_status = call @sa_http_server_resp_free(^%response)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_STREAM_NEW %out_status, %out_response, %request, %status_code
+    __bun_serve_stream_slot = stack_alloc 8
+    %out_status = call @sa_http_server_resp_stream_new(%request, %status_code, &__bun_serve_stream_slot)
+    %out_response = load __bun_serve_stream_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_SERVE_STREAM_WRITE %out_status, %response, %body, %body_len
+    %out_status = call @sa_http_server_resp_stream_write(%response, &%body, %body_len)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_STREAM_FLUSH %out_status, %response
+    %out_status = call @sa_http_server_resp_stream_flush(%response)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_STREAM_END %out_status, %response
+    %out_status = call @sa_http_server_resp_stream_end(%response)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_STREAM_FREE %out_status, %response
+    %out_status = call @sa_http_server_resp_stream_free(^%response)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_REQUEST_FREE %out_status, %request
+    %out_status = call @sa_http_server_req_free(^%request)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_FREE %out_status, %server
+    %out_status = call @sa_http_server_free(^%server)
+[END_MACRO]
+
+[MACRO] BUN_HASH_WYHASH64 %out_hash, %out_status, %data, %data_len, %seed
+    __bun_wy_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hash_wyhash64(&%data, %data_len, %seed, &__bun_wy_slot)
+    %out_hash = load __bun_wy_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_HASH_XXHASH64 %out_hash, %out_status, %data, %data_len, %seed
+    __bun_xx64_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hash_xxhash64(&%data, %data_len, %seed, &__bun_xx64_slot)
+    %out_hash = load __bun_xx64_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_HASH_XXHASH32 %out_hash, %out_status, %data, %data_len, %seed
+    __bun_xx32_slot = stack_alloc 4
+    %out_status = call @sa_bun_plugin_hash_xxhash32(&%data, %data_len, %seed, &__bun_xx32_slot)
+    %out_hash = load __bun_xx32_slot+0 as u32
+[END_MACRO]
+
+[MACRO] BUN_HASH_ADLER32 %out_hash, %out_status, %data, %data_len
+    __bun_adler_slot = stack_alloc 4
+    %out_status = call @sa_bun_plugin_hash_adler32(&%data, %data_len, &__bun_adler_slot)
+    %out_hash = load __bun_adler_slot+0 as u32
+[END_MACRO]
+
+[MACRO] BUN_HASH_XXHASH %out_hash, %out_status, %data, %data_len, %seed
+    EXPAND BUN_HASH_XXHASH64 %out_hash, %out_status, %data, %data_len, %seed
+[END_MACRO]
+
+[MACRO] BUN_HASHER_NEW %out_status, %out_handle, %algo
+    __bun_hasher_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hasher_new(%algo, &__bun_hasher_slot)
+    %out_handle = load __bun_hasher_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_HASHER_UPDATE %out_status, %handle, %data, %data_len
+    %out_status = call @sa_bun_plugin_hasher_update(%handle, &%data, %data_len)
+[END_MACRO]
+
+[MACRO] BUN_HASHER_DIGEST_HEX %out_ptr, %out_len, %out_status, %handle
+    __bun_hasher_dptr_slot = stack_alloc 8
+    __bun_hasher_dlen_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hasher_digest_hex(%handle, &__bun_hasher_dptr_slot, &__bun_hasher_dlen_slot)
+    %out_ptr = load __bun_hasher_dptr_slot+0 as ptr
+    %out_len = load __bun_hasher_dlen_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_HASHER_FREE %out_status, %handle
+    %out_status = call @sa_bun_plugin_hasher_free(^%handle)
+[END_MACRO]
+
+[MACRO] BUN_HMAC_SHA256_HEX %out_ptr, %out_len, %out_status, %key, %key_len, %data, %data_len
+    __bun_hmac_ptr_slot = stack_alloc 8
+    __bun_hmac_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_hmac_sha256_hex(&%key, %key_len, &%data, %data_len, &__bun_hmac_ptr_slot, &__bun_hmac_len_slot)
+    %out_ptr = load __bun_hmac_ptr_slot+0 as ptr
+    %out_len = load __bun_hmac_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_S3_SIGV4_SIGNATURE %out_ptr, %out_len, %out_status, %secret, %secret_len, %date, %date_len, %region, %region_len, %service, %service_len, %sts, %sts_len
+    __bun_sigv4_ptr_slot = stack_alloc 8
+    __bun_sigv4_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_s3_sigv4_signature(&%secret, %secret_len, &%date, %date_len, &%region, %region_len, &%service, %service_len, &%sts, %sts_len, &__bun_sigv4_ptr_slot, &__bun_sigv4_len_slot)
+    %out_ptr = load __bun_sigv4_ptr_slot+0 as ptr
+    %out_len = load __bun_sigv4_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SEMVER_CMP %out_order, %out_status, %a, %a_len, %b, %b_len
+    __bun_semver_slot = stack_alloc 4
+    %out_status = call @sa_bun_plugin_semver_cmp(&%a, %a_len, &%b, %b_len, &__bun_semver_slot)
+    %out_order = load __bun_semver_slot+0 as i32
+[END_MACRO]
+
+[MACRO] BUN_SHELL_EXEC %out_code, %out_stdout_ptr, %out_stdout_len, %out_stderr_ptr, %out_stderr_len, %out_status, %cmd, %cmd_len, %cwd, %cwd_len
+    __bun_shexec_code_slot = stack_alloc 4
+    __bun_shexec_stdout_ptr_slot = stack_alloc 8
+    __bun_shexec_stdout_len_slot = stack_alloc 8
+    __bun_shexec_stderr_ptr_slot = stack_alloc 8
+    __bun_shexec_stderr_len_slot = stack_alloc 8
+    %out_status = call @sa_bun_plugin_shell_exec(&%cmd, %cmd_len, &%cwd, %cwd_len, &__bun_shexec_code_slot, &__bun_shexec_stdout_ptr_slot, &__bun_shexec_stdout_len_slot, &__bun_shexec_stderr_ptr_slot, &__bun_shexec_stderr_len_slot)
+    %out_code = load __bun_shexec_code_slot+0 as u32
+    %out_stdout_ptr = load __bun_shexec_stdout_ptr_slot+0 as ptr
+    %out_stdout_len = load __bun_shexec_stdout_len_slot+0 as u64
+    %out_stderr_ptr = load __bun_shexec_stderr_ptr_slot+0 as ptr
+    %out_stderr_len = load __bun_shexec_stderr_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_WRITE_STDOUT %out_status, %data, %data_len
+    %out_status = call @sa_bun_plugin_write_stdout(&%data, %data_len)
+[END_MACRO]
+
+[MACRO] BUN_WRITE_STDERR %out_status, %data, %data_len
+    %out_status = call @sa_bun_plugin_write_stderr(&%data, %data_len)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_WS_UPGRADE %out_status, %out_ws, %request
+    __bun_ws_slot = stack_alloc 8
+    %out_status = call @sa_http_server_websocket_upgrade(%request, &__bun_ws_slot)
+    %out_ws = load __bun_ws_slot+0 as ptr
+[END_MACRO]
+
+[MACRO] BUN_SERVE_WS_READ %out_status, %out_opcode, %out_ptr, %out_len, %ws, %max_len
+    __bun_ws_opcode_slot = stack_alloc 8
+    __bun_ws_data_ptr_slot = stack_alloc 8
+    __bun_ws_data_len_slot = stack_alloc 8
+    %out_status = call @sa_http_server_websocket_read(%ws, %max_len, &__bun_ws_opcode_slot, &__bun_ws_data_ptr_slot, &__bun_ws_data_len_slot)
+    %out_opcode = load __bun_ws_opcode_slot+0 as ptr
+    %out_ptr = load __bun_ws_data_ptr_slot+0 as ptr
+    %out_len = load __bun_ws_data_len_slot+0 as u64
+[END_MACRO]
+
+[MACRO] BUN_SERVE_WS_WRITE %out_status, %ws, %opcode, %data, %data_len
+    %out_status = call @sa_http_server_websocket_write(%ws, %opcode, &%data, %data_len)
+[END_MACRO]
+
+[MACRO] BUN_SERVE_WS_FREE %out_status, %ws
+    %out_status = call @sa_http_server_websocket_free(^%ws)
+[END_MACRO]

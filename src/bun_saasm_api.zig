@@ -132,7 +132,7 @@ pub export fn sa_bun_plugin_file_url_to_path(url_ptr: ?[*]const u8, url_len: u64
     const url = url_ptr.?[0..url_len];
     const prefix = "file://";
     const rest = if (std.mem.startsWith(u8, url, prefix)) url[prefix.len..] else url;
-    var list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer list.deinit();
     var i: usize = 0;
     while (i < rest.len) {
@@ -162,7 +162,7 @@ pub export fn sa_bun_plugin_file_url_to_path(url_ptr: ?[*]const u8, url_len: u64
 pub export fn sa_bun_plugin_path_to_file_url(path_ptr: ?[*]const u8, path_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (path_ptr == null or path_len == 0) return 2;
     const path = path_ptr.?[0..path_len];
-    var list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer list.deinit();
     list.appendSlice("file://") catch return 2;
     if (!std.fs.path.isAbsolute(path)) {
@@ -496,7 +496,7 @@ pub export fn sa_bun_plugin_random_uuid_v7(out_ptr: ?*?[*]const u8, out_len: ?*u
 pub export fn sa_bun_plugin_gzip_compress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var out_list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer out_list.deinit();
     var compressor = std.compress.gzip.compressor(out_list.writer(), .{}) catch return 2;
     compressor.writer().writeAll(d) catch return 2;
@@ -520,7 +520,7 @@ pub export fn sa_bun_plugin_gzip_decompress(data_ptr: ?[*]const u8, data_len: u6
     const d = data_ptr.?[0..data_len];
     var in_stream = std.io.fixedBufferStream(d);
     var decompressor = std.compress.gzip.decompressor(in_stream.reader());
-    var out_list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer out_list.deinit();
     var temp_buf: [4096]u8 = undefined;
     while (true) {
@@ -545,7 +545,7 @@ pub export fn sa_bun_plugin_gzip_decompress(data_ptr: ?[*]const u8, data_len: u6
 pub export fn sa_bun_plugin_deflate_compress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var out_list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer out_list.deinit();
     var compressor = std.compress.flate.compressor(out_list.writer(), .{}) catch return 2;
     compressor.writer().writeAll(d) catch return 2;
@@ -569,7 +569,7 @@ pub export fn sa_bun_plugin_deflate_decompress(data_ptr: ?[*]const u8, data_len:
     const d = data_ptr.?[0..data_len];
     var in_stream = std.io.fixedBufferStream(d);
     var decompressor = std.compress.flate.decompressor(in_stream.reader());
-    var out_list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer out_list.deinit();
     var temp_buf: [4096]u8 = undefined;
     while (true) {
@@ -595,7 +595,7 @@ pub export fn sa_bun_plugin_deflate_decompress(data_ptr: ?[*]const u8, data_len:
 pub export fn sa_bun_plugin_escape_html(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const data = data_ptr.?[0..data_len];
-    var list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer list.deinit();
     for (data) |c| {
         switch (c) {
@@ -698,7 +698,7 @@ fn skipWs(s: []const u8, i: *usize) void {
 
 // Parses a JSON array of strings: ["prog","arg",...]. Returns owned argv (caller frees).
 fn parseArgvJson(json: []const u8) ![][]const u8 {
-    var argv = std.ArrayList([]const u8).init(std.heap.page_allocator);
+    var argv = std.array_list.Managed([]const u8).init(std.heap.page_allocator);
     errdefer {
         for (argv.items) |a| std.heap.page_allocator.free(a);
         argv.deinit();
@@ -716,7 +716,7 @@ fn parseArgvJson(json: []const u8) ![][]const u8 {
         }
         if (json[i] != '"') return error.InvalidArgv;
         i += 1;
-        var cur = std.ArrayList(u8).init(std.heap.page_allocator);
+        var cur = std.array_list.Managed(u8).init(std.heap.page_allocator);
         errdefer cur.deinit();
         while (i < json.len and json[i] != '"') {
             if (json[i] == '\\') {
@@ -806,7 +806,7 @@ pub export fn sa_bun_plugin_resolve_sync(spec_ptr: ?[*]const u8, spec_len: u64, 
 pub export fn sa_bun_plugin_shell_escape(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const data = data_ptr.?[0..data_len];
-    var list = std.ArrayList(u8).init(std.heap.page_allocator);
+    var list = std.array_list.Managed(u8).init(std.heap.page_allocator);
     errdefer list.deinit();
     list.append('\'') catch return 2;
     for (data) |c| {

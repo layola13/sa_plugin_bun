@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const bun_hash = @import("bun_hash.zig");
+const sio = @import("sio");
 
 // Bun compatibility plugin: native SA replacement surface for the
 // synchronous, deterministic subset of the Bun namespace.
@@ -33,18 +34,18 @@ fn writeOwned(out_ptr: ?*?[*]const u8, out_len: ?*u64, bytes: []const u8) u32 {
     return 0;
 }
 
-fn openFilePath(path: []const u8, flags: std.fs.File.OpenFlags) !std.fs.File {
+fn openFilePath(path: []const u8, flags: std.Io.Dir.OpenFileOptions) !sio.File {
     if (std.fs.path.isAbsolute(path)) {
-        return std.fs.openFileAbsolute(path, flags);
+        return sio.openFileAbsolute(path, flags);
     }
-    return std.fs.cwd().openFile(path, flags);
+    return sio.cwd().openFile(path, flags);
 }
 
-fn createFilePath(path: []const u8, flags: std.fs.File.CreateFlags) !std.fs.File {
+fn createFilePath(path: []const u8, flags: std.Io.Dir.CreateFileOptions) !sio.File {
     if (std.fs.path.isAbsolute(path)) {
-        return std.fs.createFileAbsolute(path, flags);
+        return sio.createFileAbsolute(path, flags);
     }
-    return std.fs.cwd().createFile(path, flags);
+    return sio.cwd().createFile(path, flags);
 }
 
 // --- free buffer ---
@@ -66,16 +67,16 @@ pub export fn sa_bun_plugin_revision(out_ptr: ?*?[*]const u8, out_len: ?*u64) u3
 }
 
 pub export fn sa_bun_plugin_main(out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
-    const exe = std.fs.selfExePathAlloc(std.heap.page_allocator) catch return 2;
+    const exe = sio.selfExePathAlloc(std.heap.page_allocator) catch return 2;
     defer std.heap.page_allocator.free(exe);
     return writeOwned(out_ptr, out_len, exe);
 }
 
 pub export fn sa_bun_plugin_argv_json(out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
-    const args = std.process.argsAlloc(std.heap.page_allocator) catch return 2;
-    defer std.process.argsFree(std.heap.page_allocator, args);
+    const args = sio.argsAlloc(std.heap.page_allocator) catch return 2;
+    defer sio.argsFree(std.heap.page_allocator, args);
     // Full argv including argv[0], matching Bun.argv ([bun, script, ...args]).
-    const json = std.json.stringifyAlloc(std.heap.page_allocator, args, .{}) catch return 2;
+    const json = std.json.Stringify.valueAlloc(std.heap.page_allocator, args, .{}) catch return 2;
     const ptr_slot = out_ptr orelse {
         std.heap.page_allocator.free(json);
         return 2;
@@ -90,8 +91,8 @@ pub export fn sa_bun_plugin_argv_json(out_ptr: ?*?[*]const u8, out_len: ?*u64) u
 }
 
 pub export fn sa_bun_plugin_cwd(out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path = std.process.getCwd(&buf) catch return 2;
+    const path = sio.getCwdAlloc(std.heap.page_allocator) catch return 2;
+    defer std.heap.page_allocator.free(path);
     return writeOwned(out_ptr, out_len, path);
 }
 
@@ -99,21 +100,21 @@ pub export fn sa_bun_plugin_which(cmd_ptr: ?[*]const u8, cmd_len: u64, out_ptr: 
     if (cmd_ptr == null or cmd_len == 0) return 2;
     const cmd = cmd_ptr.?[0..cmd_len];
     if (std.mem.indexOfScalar(u8, cmd, '/') != null) {
-        const z = std.heap.page_allocator.dupeZ(u8, cmd) catch return 2;
-        defer std.heap.page_allocator.free(z);
-        std.posix.access(z, std.posix.X_OK) catch return 1;
+        if (std.fs.path.isAbsolute(cmd)) {
+            std.Io.Dir.accessAbsolute(sio.io(), cmd, .{ .execute = true }) catch return 1;
+        } else {
+            sio.cwd().access(cmd, .{ .execute = true }) catch return 1;
+        }
         return writeOwned(out_ptr, out_len, cmd);
     }
     const path_z = getenv("PATH") orelse return 1;
     const path = std.mem.span(path_z);
     var it = std.mem.splitScalar(u8, path, ':');
-    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
     while (it.next()) |dir| {
         if (dir.len == 0) continue;
         const full = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, cmd }) catch continue;
-        const z = std.heap.page_allocator.dupeZ(u8, full) catch return 2;
-        defer std.heap.page_allocator.free(z);
-        std.posix.access(z, std.posix.X_OK) catch continue;
+        std.Io.Dir.accessAbsolute(sio.io(), full, .{ .execute = true }) catch continue;
         return writeOwned(out_ptr, out_len, full);
     }
     return 1;
@@ -166,8 +167,8 @@ pub export fn sa_bun_plugin_path_to_file_url(path_ptr: ?[*]const u8, path_len: u
     errdefer list.deinit();
     list.appendSlice("file://") catch return 2;
     if (!std.fs.path.isAbsolute(path)) {
-        var buf: [std.fs.max_path_bytes]u8 = undefined;
-        const cwd = std.process.getCwd(&buf) catch return 2;
+        const cwd = sio.getCwdAlloc(std.heap.page_allocator) catch return 2;
+        defer std.heap.page_allocator.free(cwd);
         list.appendSlice(cwd) catch return 2;
         list.append('/') catch return 2;
     }
@@ -180,14 +181,14 @@ pub export fn sa_bun_plugin_path_to_file_url(path_ptr: ?[*]const u8, path_len: u
 // --- time ---
 pub export fn sa_bun_plugin_nanoseconds(out_ns: ?*u64) u32 {
     const slot = out_ns orelse return 2;
-    const ns = std.time.nanoTimestamp();
+    const ns = sio.nanoTimestamp();
     slot.* = @intCast(@max(ns, 0));
     return 0;
 }
 
 pub export fn sa_bun_plugin_sleep_sync(ms: u64) u32 {
     const ns = std.math.mul(u64, ms, 1_000_000) catch return 2;
-    std.Thread.sleep(ns);
+    sio.io().sleep(.fromNanoseconds(ns), .awake) catch {};
     return 0;
 }
 
@@ -195,7 +196,7 @@ pub export fn sa_bun_plugin_sleep_sync(ms: u64) u32 {
 pub export fn sa_bun_plugin_env_get(key_ptr: ?[*]const u8, key_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (key_ptr == null or key_len == 0) return 2;
     const key = key_ptr.?[0..key_len];
-    const key_z = std.heap.page_allocator.dupeZ(u8, key) catch return 2;
+    const key_z = std.heap.page_allocator.dupeSentinel(u8, key, 0) catch return 2;
     defer std.heap.page_allocator.free(key_z);
     const value = getenv(key_z.ptr) orelse return 1;
     return writeOwned(out_ptr, out_len, std.mem.span(value));
@@ -205,9 +206,9 @@ pub export fn sa_bun_plugin_env_set(key_ptr: ?[*]const u8, key_len: u64, val_ptr
     if (key_ptr == null or key_len == 0 or val_ptr == null) return 2;
     const key = key_ptr.?[0..key_len];
     const val = val_ptr.?[0..val_len];
-    const key_z = std.heap.page_allocator.dupeZ(u8, key) catch return 2;
+    const key_z = std.heap.page_allocator.dupeSentinel(u8, key, 0) catch return 2;
     defer std.heap.page_allocator.free(key_z);
-    const val_z = std.heap.page_allocator.dupeZ(u8, val) catch return 2;
+    const val_z = std.heap.page_allocator.dupeSentinel(u8, val, 0) catch return 2;
     defer std.heap.page_allocator.free(val_z);
     if (setenv(key_z.ptr, val_z.ptr, 1) != 0) return 2;
     return 0;
@@ -216,7 +217,7 @@ pub export fn sa_bun_plugin_env_set(key_ptr: ?[*]const u8, key_len: u64, val_ptr
 pub export fn sa_bun_plugin_env_delete(key_ptr: ?[*]const u8, key_len: u64) u32 {
     if (key_ptr == null or key_len == 0) return 2;
     const key = key_ptr.?[0..key_len];
-    const key_z = std.heap.page_allocator.dupeZ(u8, key) catch return 2;
+    const key_z = std.heap.page_allocator.dupeSentinel(u8, key, 0) catch return 2;
     defer std.heap.page_allocator.free(key_z);
     if (unsetenv(key_z.ptr) != 0) return 2;
     return 0;
@@ -313,12 +314,12 @@ pub export fn sa_bun_plugin_file_exists(path_ptr: ?[*]const u8, path_len: u64, o
     const slot = out_bool orelse return 2;
     const path = path_ptr.?[0..path_len];
     if (std.fs.path.isAbsolute(path)) {
-        std.fs.accessAbsolute(path, .{}) catch {
+        std.Io.Dir.accessAbsolute(sio.io(), path, .{}) catch {
             slot.* = 0;
             return 0;
         };
     } else {
-        std.fs.cwd().access(path, .{}) catch {
+        sio.cwd().access(path, .{}) catch {
             slot.* = 0;
             return 0;
         };
@@ -332,32 +333,26 @@ pub export fn sa_bun_plugin_mkdir(path_ptr: ?[*]const u8, path_len: u64, recursi
     const path = path_ptr.?[0..path_len];
     if (recursive == 0) {
         if (std.fs.path.isAbsolute(path)) {
-            std.fs.makeDirAbsolute(path) catch return 2;
+            std.Io.Dir.createDirAbsolute(sio.io(), path, .default_dir) catch return 2;
         } else {
-            std.fs.cwd().makeDir(path) catch return 2;
+            sio.cwd().makeDir(path) catch return 2;
         }
     } else {
         if (std.fs.path.isAbsolute(path)) {
-            std.fs.makeDirAbsolute(path) catch |err| {
-                if (err != error.PathAlreadyExists) return 2;
-            };
             // best-effort parents for absolute paths
             var tmp = std.heap.page_allocator.dupe(u8, path) catch return 2;
             defer std.heap.page_allocator.free(tmp);
             var i: usize = 1;
             while (i < tmp.len) : (i += 1) {
                 if (tmp[i] == '/') {
-                    tmp[i] = 0;
-                    const part = tmp[0..i];
-                    std.fs.makeDirAbsolute(part) catch {};
-                    tmp[i] = '/';
+                    std.Io.Dir.createDirAbsolute(sio.io(), tmp[0..i], .default_dir) catch {};
                 }
             }
-            std.fs.makeDirAbsolute(path) catch |err| {
+            std.Io.Dir.createDirAbsolute(sio.io(), path, .default_dir) catch |err| {
                 if (err != error.PathAlreadyExists) return 2;
             };
         } else {
-            std.fs.cwd().makePath(path) catch return 2;
+            sio.cwd().makePath(path) catch return 2;
         }
     }
     return 0;
@@ -368,19 +363,20 @@ pub export fn sa_bun_plugin_remove(path_ptr: ?[*]const u8, path_len: u64, recurs
     const path = path_ptr.?[0..path_len];
     if (recursive == 0) {
         if (std.fs.path.isAbsolute(path)) {
-            std.fs.deleteFileAbsolute(path) catch {
-                std.fs.deleteDirAbsolute(path) catch return 2;
+            std.Io.Dir.deleteFileAbsolute(sio.io(), path) catch {
+                std.Io.Dir.deleteDirAbsolute(sio.io(), path) catch return 2;
             };
         } else {
-            std.fs.cwd().deleteFile(path) catch {
-                std.fs.cwd().deleteDir(path) catch return 2;
+            sio.cwd().deleteFile(path) catch {
+                sio.cwd().deleteDir(path) catch return 2;
             };
         }
     } else {
         if (std.fs.path.isAbsolute(path)) {
-            std.fs.deleteTreeAbsolute(path) catch return 2;
+            const dir = sio.openDirAbsolute(path, .{ .iterate = true }) catch return 2;
+            dir.deleteTree(".") catch return 2;
         } else {
-            std.fs.cwd().deleteTree(path) catch return 2;
+            sio.cwd().deleteTree(path) catch return 2;
         }
     }
     return 0;
@@ -437,18 +433,26 @@ pub export fn sa_bun_plugin_sha256_hex(data_ptr: ?[*]const u8, data_len: u64, ou
     if (data_ptr == null) return 2;
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(data_ptr.?[0..data_len], &digest, .{});
+    const hex_digits = "0123456789abcdef";
     var hex_buf: [64]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch return 2;
-    return writeOwned(out_ptr, out_len, hex);
+    for (digest, 0..) |b, i| {
+        hex_buf[i * 2] = hex_digits[b >> 4];
+        hex_buf[i * 2 + 1] = hex_digits[b & 0xF];
+    }
+    return writeOwned(out_ptr, out_len, hex_buf[0..]);
 }
 
 pub export fn sa_bun_plugin_sha512_hex(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     var digest: [64]u8 = undefined;
     std.crypto.hash.sha2.Sha512.hash(data_ptr.?[0..data_len], &digest, .{});
+    const hex_digits = "0123456789abcdef";
     var hex_buf: [128]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch return 2;
-    return writeOwned(out_ptr, out_len, hex);
+    for (digest, 0..) |b, i| {
+        hex_buf[i * 2] = hex_digits[b >> 4];
+        hex_buf[i * 2 + 1] = hex_digits[b & 0xF];
+    }
+    return writeOwned(out_ptr, out_len, hex_buf[0..]);
 }
 
 pub export fn sa_bun_plugin_random_bytes(size: u64, out_ptr: ?*?[*]const u8) u32 {
@@ -456,7 +460,7 @@ pub export fn sa_bun_plugin_random_bytes(size: u64, out_ptr: ?*?[*]const u8) u32
     const n: usize = @intCast(size);
     const buf = std.heap.page_allocator.alloc(u8, n) catch return 2;
     errdefer std.heap.page_allocator.free(buf);
-    std.crypto.random.bytes(buf);
+    sio.io().random(buf);
     const slot = out_ptr orelse {
         std.heap.page_allocator.free(buf);
         return 2;
@@ -467,8 +471,8 @@ pub export fn sa_bun_plugin_random_bytes(size: u64, out_ptr: ?*?[*]const u8) u32
 
 pub export fn sa_bun_plugin_random_uuid_v7(out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     var rand: [16]u8 = undefined;
-    std.crypto.random.bytes(&rand);
-    const ms: u64 = @intCast(@max(std.time.milliTimestamp(), 0));
+    sio.io().random(&rand);
+    const ms: u64 = @intCast(@max(@divFloor(sio.nanoTimestamp(), std.time.ns_per_ms), 0));
     rand[0] = @intCast((ms >> 40) & 0xFF);
     rand[1] = @intCast((ms >> 32) & 0xFF);
     rand[2] = @intCast((ms >> 24) & 0xFF);
@@ -496,12 +500,15 @@ pub export fn sa_bun_plugin_random_uuid_v7(out_ptr: ?*?[*]const u8, out_len: ?*u
 pub export fn sa_bun_plugin_gzip_compress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
-    errdefer out_list.deinit();
-    var compressor = std.compress.gzip.compressor(out_list.writer(), .{}) catch return 2;
-    compressor.writer().writeAll(d) catch return 2;
+    // NOTE(Zig 0.17): std.compress.gzip removed; flate with .gzip container.
+    // NOTE(Zig 0.17): Compress.init asserts output.buffer.len > 8.
+    var aw: std.Io.Writer.Allocating = std.Io.Writer.Allocating.initCapacity(std.heap.page_allocator, 64) catch return 2;
+    defer aw.deinit();
+    var window: [std.compress.flate.max_window_len]u8 = undefined;
+    var compressor = std.compress.flate.Compress.init(&aw.writer, &window, .gzip, .default) catch return 2;
+    (&compressor.writer).writeAll(d) catch return 2;
     compressor.finish() catch return 2;
-    const slice = out_list.toOwnedSlice() catch return 2;
+    const slice = aw.toOwnedSlice() catch return 2;
     const ptr_slot = out_ptr orelse {
         std.heap.page_allocator.free(slice);
         return 2;
@@ -518,17 +525,13 @@ pub export fn sa_bun_plugin_gzip_compress(data_ptr: ?[*]const u8, data_len: u64,
 pub export fn sa_bun_plugin_gzip_decompress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var in_stream = std.io.fixedBufferStream(d);
-    var decompressor = std.compress.gzip.decompressor(in_stream.reader());
-    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
-    errdefer out_list.deinit();
-    var temp_buf: [4096]u8 = undefined;
-    while (true) {
-        const n = decompressor.read(&temp_buf) catch return 2;
-        if (n == 0) break;
-        out_list.appendSlice(temp_buf[0..n]) catch return 2;
-    }
-    const slice = out_list.toOwnedSlice() catch return 2;
+    var in_reader = std.Io.Reader.fixed(d);
+    var window: [std.compress.flate.max_window_len]u8 = undefined;
+    var decompressor = std.compress.flate.Decompress.init(&in_reader, .gzip, &window);
+    var aw: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer aw.deinit();
+    _ = decompressor.reader.streamRemaining(&aw.writer) catch return 2;
+    const slice = aw.toOwnedSlice() catch return 2;
     const ptr_slot = out_ptr orelse {
         std.heap.page_allocator.free(slice);
         return 2;
@@ -545,12 +548,14 @@ pub export fn sa_bun_plugin_gzip_decompress(data_ptr: ?[*]const u8, data_len: u6
 pub export fn sa_bun_plugin_deflate_compress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
-    errdefer out_list.deinit();
-    var compressor = std.compress.flate.compressor(out_list.writer(), .{}) catch return 2;
-    compressor.writer().writeAll(d) catch return 2;
+    // NOTE(Zig 0.17): Compress.init asserts output.buffer.len > 8.
+    var aw: std.Io.Writer.Allocating = std.Io.Writer.Allocating.initCapacity(std.heap.page_allocator, 64) catch return 2;
+    defer aw.deinit();
+    var window: [std.compress.flate.max_window_len]u8 = undefined;
+    var compressor = std.compress.flate.Compress.init(&aw.writer, &window, .zlib, .default) catch return 2;
+    (&compressor.writer).writeAll(d) catch return 2;
     compressor.finish() catch return 2;
-    const slice = out_list.toOwnedSlice() catch return 2;
+    const slice = aw.toOwnedSlice() catch return 2;
     const ptr_slot = out_ptr orelse {
         std.heap.page_allocator.free(slice);
         return 2;
@@ -567,17 +572,13 @@ pub export fn sa_bun_plugin_deflate_compress(data_ptr: ?[*]const u8, data_len: u
 pub export fn sa_bun_plugin_deflate_decompress(data_ptr: ?[*]const u8, data_len: u64, out_ptr: ?*?[*]const u8, out_len: ?*u64) u32 {
     if (data_ptr == null) return 2;
     const d = data_ptr.?[0..data_len];
-    var in_stream = std.io.fixedBufferStream(d);
-    var decompressor = std.compress.flate.decompressor(in_stream.reader());
-    var out_list = std.array_list.Managed(u8).init(std.heap.page_allocator);
-    errdefer out_list.deinit();
-    var temp_buf: [4096]u8 = undefined;
-    while (true) {
-        const n = decompressor.reader().read(&temp_buf) catch return 2;
-        if (n == 0) break;
-        out_list.appendSlice(temp_buf[0..n]) catch return 2;
-    }
-    const slice = out_list.toOwnedSlice() catch return 2;
+    var in_reader = std.Io.Reader.fixed(d);
+    var window: [std.compress.flate.max_window_len]u8 = undefined;
+    var decompressor = std.compress.flate.Decompress.init(&in_reader, .zlib, &window);
+    var aw: std.Io.Writer.Allocating = .init(std.heap.page_allocator);
+    defer aw.deinit();
+    _ = decompressor.reader.streamRemaining(&aw.writer) catch return 2;
+    const slice = aw.toOwnedSlice() catch return 2;
     const ptr_slot = out_ptr orelse {
         std.heap.page_allocator.free(slice);
         return 2;
@@ -767,14 +768,14 @@ pub export fn sa_bun_plugin_spawn_sync(argv_json_ptr: ?[*]const u8, argv_json_le
     if (cwd_ptr != null and cwd_len > 0) {
         cwd = cwd_ptr.?[0..cwd_len];
     }
-    const run_res = std.process.Child.run(.{
+    const run_res = sio.Child.run(.{
         .allocator = allocator,
         .argv = argv,
         .cwd = cwd,
         .max_output_bytes = 10 * 1024 * 1024,
     }) catch return 2;
     switch (run_res.term) {
-        .Exited => |code| code_slot.* = code,
+        .exited => |code| code_slot.* = code,
         else => code_slot.* = 1,
     }
     (out_stdout_ptr orelse return 2).* = run_res.stdout.ptr;
@@ -911,9 +912,13 @@ pub export fn sa_bun_plugin_hasher_digest_hex(handle: ?*anyopaque, out_ptr: ?*?[
             break :blk 16;
         },
     };
+    const hex_digits = "0123456789abcdef";
     var hex_buf: [128]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(digest[0..n])}) catch return 2;
-    return writeOwned(out_ptr, out_len, hex);
+    for (digest[0..n], 0..) |b, i| {
+        hex_buf[i * 2] = hex_digits[b >> 4];
+        hex_buf[i * 2 + 1] = hex_digits[b & 0xF];
+    }
+    return writeOwned(out_ptr, out_len, hex_buf[0 .. n * 2]);
 }
 
 pub export fn sa_bun_plugin_hasher_free(handle: ?*anyopaque) u32 {
@@ -927,9 +932,13 @@ pub export fn sa_bun_plugin_hmac_sha256_hex(key_ptr: ?[*]const u8, key_len: u64,
     if (key_ptr == null or data_ptr == null) return 2;
     var digest: [32]u8 = undefined;
     std.crypto.auth.hmac.sha2.HmacSha256.create(&digest, data_ptr.?[0..data_len], key_ptr.?[0..key_len]);
+    const hex_digits = "0123456789abcdef";
     var hex_buf: [64]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch return 2;
-    return writeOwned(out_ptr, out_len, hex);
+    for (digest, 0..) |b, i| {
+        hex_buf[i * 2] = hex_digits[b >> 4];
+        hex_buf[i * 2 + 1] = hex_digits[b & 0xF];
+    }
+    return writeOwned(out_ptr, out_len, hex_buf[0..]);
 }
 
 // AWS Signature Version 4 signing-key derivation:
@@ -952,9 +961,13 @@ pub export fn sa_bun_plugin_s3_sigv4_signature(secret_ptr: ?[*]const u8, secret_
     H.create(&k_signing, "aws4_request", &k_service);
     var sig: [32]u8 = undefined;
     H.create(&sig, sts_ptr.?[0..sts_len], &k_signing);
+    const hex_digits = "0123456789abcdef";
     var hex_buf: [64]u8 = undefined;
-    const hex = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&sig)}) catch return 2;
-    return writeOwned(out_ptr, out_len, hex);
+    for (sig, 0..) |b, i| {
+        hex_buf[i * 2] = hex_digits[b >> 4];
+        hex_buf[i * 2 + 1] = hex_digits[b & 0xF];
+    }
+    return writeOwned(out_ptr, out_len, hex_buf[0..]);
 }
 
 // --- semver: Bun.semver subset (numeric core + prerelease ordering) ---
@@ -1056,14 +1069,14 @@ pub export fn sa_bun_plugin_shell_exec(cmd_ptr: ?[*]const u8, cmd_len: u64, cwd_
         cwd = cwd_ptr.?[0..cwd_len];
     }
     const argv = [_][]const u8{ "/bin/sh", "-c", cmd };
-    const run_res = std.process.Child.run(.{
+    const run_res = sio.Child.run(.{
         .allocator = allocator,
         .argv = &argv,
         .cwd = cwd,
         .max_output_bytes = 10 * 1024 * 1024,
     }) catch return 2;
     switch (run_res.term) {
-        .Exited => |code| code_slot.* = code,
+        .exited => |code| code_slot.* = code,
         else => code_slot.* = 1,
     }
     (out_stdout_ptr orelse return 2).* = run_res.stdout.ptr;
@@ -1076,13 +1089,13 @@ pub export fn sa_bun_plugin_shell_exec(cmd_ptr: ?[*]const u8, cmd_len: u64, cwd_
 // --- stdio sink: Bun.write(Bun.stdout, ...) / Bun.write(Bun.stderr, ...) ---
 pub export fn sa_bun_plugin_write_stdout(data_ptr: ?[*]const u8, data_len: u64) u32 {
     if (data_ptr == null) return 2;
-    std.io.getStdOut().writeAll(data_ptr.?[0..data_len]) catch return 2;
+    sio.getStdOut().writeAll(data_ptr.?[0..data_len]) catch return 2;
     return 0;
 }
 
 pub export fn sa_bun_plugin_write_stderr(data_ptr: ?[*]const u8, data_len: u64) u32 {
     if (data_ptr == null) return 2;
-    std.io.getStdErr().writeAll(data_ptr.?[0..data_len]) catch return 2;
+    sio.getStdErr().writeAll(data_ptr.?[0..data_len]) catch return 2;
     return 0;
 }
 

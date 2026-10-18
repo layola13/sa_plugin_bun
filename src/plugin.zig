@@ -1,6 +1,11 @@
 const std = @import("std");
 const plugin_api = @import("plugin_api");
 const _api = @import("bun_saasm_api.zig");
+// NOTE(Zig 0.17): force emission of the api module's `export fn` symbols
+// (plain `pub const` aliases alone are pruned, breaking ABI verification).
+comptime {
+    _ = _api;
+}
 // NOTE(Zig 0.17): usingnamespace removed.
 pub const sa_bun_plugin_free_buffer = _api.sa_bun_plugin_free_buffer;
 pub const sa_bun_plugin_version = _api.sa_bun_plugin_version;
